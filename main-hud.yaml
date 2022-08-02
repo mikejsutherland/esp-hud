@@ -1,0 +1,442 @@
+esphome:
+  name: main-hud
+  includes: utilities.h
+
+esp32:
+  board: esp32dev
+  framework:
+    type: arduino
+
+logger:
+
+api:
+  encryption:
+    key: !secret api_enc_key
+
+ota:
+  password: !secret ota_password
+
+wifi:
+  ssid: !secret wifi_ssid
+  password: !secret wifi_password
+  fast_connect: true
+
+font:
+  - file: 'fonts/Roboto-Light.ttf'
+    id: font_tiny_rb
+    size: 8
+    glyphs: [' ', '/', ':', '-', '0', '1', '2', '3', '4', '5', '6', '7', '8', '9']
+  - file: 'fonts/Roboto-Bold.ttf'
+    id: font_small_rb
+    size: 20
+  - file: 'fonts/Roboto-Bold.ttf'
+    id: font_medium_rb
+    size: 24
+  - file: 'fonts/Roboto-Regular.ttf'
+    id: font_large_rb
+    size: 100
+  - file: 'fonts/GothamRnd-Bold.ttf'
+    id: font_small_bold
+    size: 18
+  # Include Material Design Icons font
+  # https://community.home-assistant.io/t/display-materialdesign-icons-on-esphome-attached-to-screen/199790/16
+  - file: 'fonts/materialdesignicons-webfont.ttf'
+    id: font_mdi_large
+    size: 96
+    glyphs: &mdi-weather-glyphs
+      - "\U000F0590" # mdi-weather-cloudy
+      - "\U000F0F2F" # mdi-weather-cloudy-alert
+      - "\U000F0E6E" # mdi-weather-cloudy-arrow-right
+      - "\U000F0591" # mdi-weather-fog
+      - "\U000F0592" # mdi-weather-hail
+      - "\U000F0F30" # mdi-weather-hazy
+      - "\U000F0898" # mdi-weather-hurricane
+      - "\U000F0593" # mdi-weather-lightning
+      - "\U000F067E" # mdi-weather-lightning-rainy
+      - "\U000F0594" # mdi-weather-night
+      - "\U000F0F31" # mdi-weather-night-partly-cloudy
+      - "\U000F0595" # mdi-weather-partly-cloudy
+      - "\U000F0F32" # mdi-weather-partly-lightning
+      - "\U000F0F33" # mdi-weather-partly-rainy
+      - "\U000F0F34" # mdi-weather-partly-snowy
+      - "\U000F0F35" # mdi-weather-partly-snowy-rainy
+      - "\U000F0596" # mdi-weather-pouring
+      - "\U000F0597" # mdi-weather-rainy
+      - "\U000F0598" # mdi-weather-snowy
+      - "\U000F0F36" # mdi-weather-snowy-heavy
+      - "\U000F067F" # mdi-weather-snowy-rainy
+      - "\U000F0599" # mdi-weather-sunny
+      - "\U000F0F37" # mdi-weather-sunny-alert
+      - "\U000F14E4" # mdi-weather-sunny-off
+      - "\U000F059A" # mdi-weather-sunset
+      - "\U000F059B" # mdi-weather-sunset-down
+      - "\U000F059C" # mdi-weather-sunset-up
+      - "\U000F0F38" # mdi-weather-tornado
+      - "\U000F059D" # mdi-weather-windy
+      - "\U000F059E" # mdi-weather-windy-variant
+      - "\U000F081A" # doors closed
+      - "\U000F081C" # doors open
+      - "\U000F10AF" # doors lock
+      - "\U000F05AE" # windows closed
+      - "\U000F05B1" # windows open
+      - "\U000F1A4E" # lights on
+      - "\U000F1803" # lights off
+      - "\U000F0D59" # alert
+      - "\U000F00ED" # calendar-reminder
+      - "\U000F1204" # unknown
+  - file: 'fonts/materialdesignicons-webfont.ttf'
+    id: font_mdi_medium
+    size: 36
+    glyphs: *mdi-weather-glyphs
+
+image:
+  - file: "images/qr_wifi_guest.png"
+    id: qr_wifi_guest
+    resize: 90x90
+
+globals:
+  - id: bootinit
+    type: bool
+    restore_value: no
+    initial_value: "false"
+
+time:
+  - platform: homeassistant
+    id: homeassistant_time
+
+script:
+  - id: refresh_display
+    then:
+      - logger.log: Sensor triggered e-ink refresh
+      - component.update: eink_display
+  - id: refresh_init
+    then:
+      if:
+        condition:
+          lambda: 'return id(bootinit) == false;'
+        then:
+          - logger.log: Boot INIT pause for sensor data
+          - delay: 45s
+          - logger.log: Boot INIT refresh display
+          - globals.set:
+              id: bootinit
+              value: "true"
+          - component.update: eink_display
+
+# Group triggers
+binary_sensor:
+  - platform: homeassistant
+    entity_id: sensor.alarm_group
+    id: alarm_group
+    filters:
+      - delayed_on_off: 10s
+    on_state:
+      then:
+        - script.execute: refresh_display
+
+  - platform: homeassistant
+    entity_id: sensor.entity_groups
+    attribute: doors_group
+    id: doors_group
+    filters:
+      - delayed_on_off: 90s
+    on_state:
+      then:
+        - script.execute: refresh_display
+
+  - platform: homeassistant
+    entity_id: sensor.entity_groups
+    attribute: lights_group
+    id: lights_group
+    filters:
+      - delayed_on_off: 90s
+    on_state:
+      then:
+        - script.execute: refresh_display
+
+  - platform: homeassistant
+    entity_id: sensor.entity_groups
+    attribute: windows_group
+    id: windows_group
+    filters:
+      - delayed_on_off: 90s
+    on_state:
+      then:
+        - script.execute: refresh_display
+
+sensor:
+  - platform: homeassistant
+    entity_id: sensor.kentville_temperature
+    id: weather_temperature
+    on_value:
+      then:
+        - script.execute: refresh_init
+
+  - platform: homeassistant
+    entity_id: sensor.kentville_low_temperature
+    id: weather_temperature_low
+
+  - platform: homeassistant
+    entity_id: sensor.kentville_high_temperature
+    id: weather_temperature_high
+
+  - platform: homeassistant
+    entity_id: sensor.kentville_wind_speed
+    id: weather_wind_speed
+
+  - platform: homeassistant
+    entity_id: sensor.kentville_humidity
+    id: weather_humidity
+
+  - platform: homeassistant
+    entity_id: sensor.weather_data
+    attribute: weather_temperature_0
+    id: weather_temperature_0
+
+  - platform: homeassistant
+    entity_id: sensor.weather_data
+    attribute: weather_temperature_1
+    id: weather_temperature_1
+
+  - platform: homeassistant
+    entity_id: sensor.weather_data
+    attribute: weather_temperature_2
+    id: weather_temperature_2
+
+  - platform: homeassistant
+    entity_id: sensor.weather_data
+    attribute: weather_temperature_3
+    id: weather_temperature_3
+
+text_sensor:
+  - platform: homeassistant
+    entity_id: sensor.weather_data
+    attribute: weather_precipitation
+    id: weather_precipitation
+
+  - platform: homeassistant
+    entity_id: sensor.weather_data
+    attribute: weather_wind_direction
+    id: weather_wind_direction
+
+  - platform: homeassistant
+    entity_id: sensor.weather_data
+    attribute: weather_condition_now
+    id: weather_condition_now
+
+  - platform: homeassistant
+    entity_id: sensor.weather_data
+    attribute: weather_condition_0
+    id: weather_condition_0
+
+  - platform: homeassistant
+    entity_id: sensor.weather_data
+    attribute: weather_timeofday_0
+    id: weather_timeofday_0
+
+  - platform: homeassistant
+    entity_id: sensor.weather_data
+    attribute: weather_condition_1
+    id: weather_condition_1
+
+  - platform: homeassistant
+    entity_id: sensor.weather_data
+    attribute: weather_timeofday_1
+    id: weather_timeofday_1
+
+  - platform: homeassistant
+    entity_id: sensor.weather_data
+    attribute: weather_condition_2
+    id: weather_condition_2
+
+  - platform: homeassistant
+    entity_id: sensor.weather_data
+    attribute: weather_timeofday_2
+    id: weather_timeofday_2
+
+  - platform: homeassistant
+    entity_id: sensor.weather_data
+    attribute: weather_condition_3
+    id: weather_condition_3
+
+  - platform: homeassistant
+    entity_id: sensor.weather_data
+    attribute: weather_timeofday_3
+    id: weather_timeofday_3
+
+  - platform: homeassistant
+    entity_id: sensor.alarm_group
+    attribute: alerts
+    id: alerts
+
+  - platform: homeassistant
+    entity_id: sensor.calendar_events
+    attribute: event_list
+    id: event_list
+
+spi:
+  clk_pin: GPIO13
+  mosi_pin: GPIO14
+
+display:
+  - platform: waveshare_epaper
+    id: eink_display
+    cs_pin: GPIO15
+    dc_pin: GPIO27
+    busy_pin: GPIO25
+    reset_pin: GPIO26
+    model: 7.50inV2
+    update_interval: 30min
+    rotation: 180
+    lambda: |-
+
+      std::map<std::string, std::string> icon_map
+      {
+        {"cloudy", "\U000F0590"},
+        {"cloudy-alert", "\U000F0F2F"},
+        {"cloudy-arrow-right", "\U000F0E6E"},
+        {"fog", "\U000F0591"},
+        {"hail", "\U000F0592"},
+        {"hazy", "\U000F0F30"},
+        {"hurricane", "\U000F0898"},
+        {"lightning", "\U000F0593"},
+        {"lightning-rainy", "\U000F067E"},
+        {"night", "\U000F0594"},
+        {"clear-night", "\U000F0594"},
+        {"night-partly-cloudy", "\U000F0F31"},
+        {"partlycloudy", "\U000F0595"},
+        {"partly-lightning", "\U000F0F32"},
+        {"partly-rainy", "\U000F0F33"},
+        {"partly-snowy", "\U000F0F34"},
+        {"partly-snowy-rainy", "\U000F0F35"},
+        {"pouring", "\U000F0596"},
+        {"rainy", "\U000F0597"},
+        {"snowy", "\U000F0598"},
+        {"snowy-heavy", "\U000F0F36"},
+        {"snowy-rainy", "\U000F067F"},
+        {"sunny", "\U000F0599"},
+        {"sunny-alert", "\U000F0F37"},
+        {"sunny-off", "\U000F14E4"},
+        {"sunset", "\U000F059A"},
+        {"sunset-down", "\U000F059B"},
+        {"sunset-up", "\U000F059C"},
+        {"tornado", "\U000F0F38"},
+        {"windy", "\U000F059D"},
+        {"windy-variant", "\U000F059E"},
+        {"doors-closed", "\U000F081A"},
+        {"doors-open", "\U000F081C"},
+        {"doors-lock", "\U000F10AF"},
+        {"windows-closed", "\U000F05AE"},
+        {"windows-open", "\U000F05B1"},
+        {"lights-on", "\U000F1A4E"},
+        {"lights-off", "\U000F1803"},
+        {"alert", "\U000F0D59"},
+        {"calendar-reminder", "\U000F00ED"},
+        {"unknown", "\U000F1204"},
+      };
+
+      // Init Splash
+      if (id(bootinit) == false) {
+        it.printf(it.get_width()/2, it.get_height()/2, id(font_medium_rb), COLOR_ON, TextAlign::TOP_CENTER, "Initializing, please standby ...");
+        return;
+      }
+
+      // Alerts
+      if (id(alarm_group).state) {
+
+        it.printf((it.get_width()/8)*1, 40, id(font_mdi_large), COLOR_ON, TextAlign::TOP_CENTER, "%s", icon_map["alert"].c_str());
+        it.printf(it.get_width()/4, (it.get_height()/4)-40, id(font_medium_rb), COLOR_ON, TextAlign::TOP_LEFT, "Device Alarm:");
+
+        const char *alert_msgs = strdup(id(alerts).state.c_str());
+        //ESP_LOGD("Alarms", "Messages (raw): %s", (char*)alert_msgs);
+
+        std::vector<std::string> messages = split((char*)alert_msgs, "\n");
+        int ypos = messages.size() > 1 ? it.get_height()/2 - messages.size()*30 : it.get_height()/2;
+
+        for (std::vector<std::string>::iterator t=messages.begin(); t!=messages.end(); ++t)
+        {
+          const char *e = t->c_str();
+          it.printf(it.get_width()/4, ypos, id(font_medium_rb), COLOR_ON, TextAlign::LEFT, "%s", t->c_str());
+          ypos += 30;
+        }
+
+        return;
+      }
+
+      // HUD
+      // Render time
+      it.strftime(4, it.get_height()-10, id(font_tiny_rb), COLOR_ON, TextAlign::LEFT, "%Y/%m/%d %H:%M:%S", id(homeassistant_time).now());
+
+      // Date
+      it.strftime((it.get_width()/4)*3, 20, id(font_small_rb), COLOR_ON, TextAlign::CENTER, "%A, %B %e %Y", id(homeassistant_time).now());
+
+      // Grid
+      it.filled_rectangle((it.get_width()/2)-1, 40, 2, it.get_height()-80); // vertical middle
+      it.filled_rectangle((it.get_width()/4)*3, 40, 2, ((it.get_height()/3)*2)-50); // vertical right
+      it.filled_rectangle((it.get_width()/2)+60, 330, (it.get_width()/2)-90, 2); // horizontal
+
+      // Weather
+      it.printf(30, 40, id(font_mdi_large), COLOR_ON, TextAlign::TOP_LEFT, "%s", icon_map[id(weather_condition_now).state.c_str()].c_str());
+      it.printf(it.get_width()/2-30, 30, id(font_large_rb), COLOR_ON, TextAlign::TOP_RIGHT, "%2.0f°C", id(weather_temperature).state);
+
+      // Weather details
+      it.printf(it.get_width()/2-30, 160, id(font_small_bold), COLOR_ON, TextAlign::TOP_RIGHT, "Low: %2.0f°C", id(weather_temperature_low).state);
+      it.printf(it.get_width()/2-30, 180, id(font_small_bold), COLOR_ON, TextAlign::TOP_RIGHT, "High: %2.0f°C", id(weather_temperature_high).state);
+      it.printf(30, 160, id(font_small_bold), COLOR_ON, TextAlign::TOP_LEFT, "Precipitation: %s%%", id(weather_precipitation).state.c_str());
+      it.printf(30, 180, id(font_small_bold), COLOR_ON, TextAlign::TOP_LEFT, "Humidity: %2.0f%%", id(weather_humidity).state);
+      it.printf(30, 200, id(font_small_bold), COLOR_ON, TextAlign::TOP_LEFT, "Wind: %.0f km/h %s", id(weather_wind_speed).state, id(weather_wind_direction).state.c_str());
+
+      // Forecast
+      it.printf(30, 280, id(font_small_bold), COLOR_ON, TextAlign::TOP_LEFT, "%s", id(weather_timeofday_0).state.c_str());
+      it.printf(it.get_width()/4, 270, id(font_mdi_medium), COLOR_ON, TextAlign::TOP_LEFT, "%s", icon_map[id(weather_condition_0).state.c_str()].c_str());
+      it.printf(it.get_width()/2-30, 280, id(font_small_bold), COLOR_ON, TextAlign::TOP_RIGHT, "%2.0f°C", id(weather_temperature_0).state);
+
+      it.printf(30, 320, id(font_small_bold), COLOR_ON, TextAlign::TOP_LEFT, "%s", id(weather_timeofday_1).state.c_str());
+      it.printf(it.get_width()/4, 310, id(font_mdi_medium), COLOR_ON, TextAlign::TOP_LEFT, "%s", icon_map[id(weather_condition_1).state.c_str()].c_str());
+      it.printf(it.get_width()/2-30, 320, id(font_small_bold), COLOR_ON, TextAlign::TOP_RIGHT, "%2.0f°C", id(weather_temperature_1).state);
+
+      it.printf(30, 360, id(font_small_bold), COLOR_ON, TextAlign::TOP_LEFT, "%s", id(weather_timeofday_2).state.c_str());
+      it.printf(it.get_width()/4, 350, id(font_mdi_medium), COLOR_ON, TextAlign::TOP_LEFT, "%s", icon_map[id(weather_condition_2).state.c_str()].c_str());
+      it.printf(it.get_width()/2-30, 360, id(font_small_bold), COLOR_ON, TextAlign::TOP_RIGHT, "%2.0f°C", id(weather_temperature_2).state);
+
+      it.printf(30, 400, id(font_small_bold), COLOR_ON, TextAlign::TOP_LEFT, "%s", id(weather_timeofday_3).state.c_str());
+      it.printf(it.get_width()/4, 390, id(font_mdi_medium), COLOR_ON, TextAlign::TOP_LEFT, "%s", icon_map[id(weather_condition_3).state.c_str()].c_str());
+      it.printf(it.get_width()/2-30, 400, id(font_small_bold), COLOR_ON, TextAlign::TOP_RIGHT, "%2.0f°C", id(weather_temperature_3).state);
+
+      // Entity Groups
+      it.printf((it.get_width()/2)+30, 50, id(font_small_bold), COLOR_ON, TextAlign::TOP_LEFT, "Doors");
+      it.printf((it.get_width()/8)*5, 70, id(font_mdi_large), COLOR_ON, TextAlign::TOP_CENTER, "%s", icon_map[id(doors_group).state ? "doors-open" : "doors-closed"].c_str());
+
+      it.printf(((it.get_width()/4)*3)+30, 50, id(font_small_bold), COLOR_ON, TextAlign::TOP_LEFT, "Lights");
+      it.printf((it.get_width()/8)*7, 70, id(font_mdi_large), COLOR_ON, TextAlign::TOP_CENTER, "%s", icon_map[id(lights_group).state ? "lights-on" : "lights-off"].c_str());
+
+      it.printf((it.get_width()/2)+30, 180, id(font_small_bold), COLOR_ON, TextAlign::TOP_LEFT, "Windows");
+      it.printf((it.get_width()/8)*5, 200, id(font_mdi_large), COLOR_ON, TextAlign::TOP_CENTER, "%s", icon_map[id(windows_group).state ? "windows-open" : "windows-closed"].c_str());
+
+      it.printf(((it.get_width()/4)*3)+30, 180, id(font_small_bold), COLOR_ON, TextAlign::TOP_LEFT, "Wireless");
+      it.image(((it.get_width()/8)*7)-45, 210, id(qr_wifi_guest));
+
+      // Events
+      it.printf((it.get_width()/2)+20, 310, id(font_mdi_medium), COLOR_ON, TextAlign::TOP_LEFT, "%s", icon_map["calendar-reminder"].c_str());
+
+      int ypos = 360;
+      const char *calendar_events = strdup(id(event_list).state.c_str());
+      //ESP_LOGD("Calendar", "Events (raw): %s", (char*)calendar_events);
+
+      std::vector<std::string> events = split((char*)calendar_events, "\n");
+
+      for (std::vector<std::string>::iterator t=events.begin(); t!=events.end(); ++t)
+      {
+        const char *e = t->c_str();
+        //ESP_LOGD("Calendar", "Event: %s", (char*)e);
+
+        std::vector<std::string> event = split((char*)e, "|");
+        //ESP_LOGD("Calendar", "Event: %s %s", event[0].c_str(), event[1].c_str());
+
+        it.printf((it.get_width()/2)+30, ypos, id(font_small_bold), COLOR_ON, TextAlign::TOP_LEFT, "%s", event[0].c_str());
+        it.printf((it.get_width()/4)*3, ypos, id(font_small_bold), COLOR_ON, TextAlign::TOP_LEFT, "%s", event[1].c_str());
+
+        ypos += 20;
+      }
+
+      it.filled_rectangle(it.get_width()-30, 340, 30, 120, COLOR_OFF);

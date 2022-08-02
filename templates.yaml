@@ -1,0 +1,154 @@
+- sensor:
+
+    - name: Calendar Events
+      state: "OK"
+      attributes:
+
+        event_list: >
+          {% set today = (now().timestamp() | timestamp_custom('%Y%m%d')) -%}
+          {% set timenow = (now().timestamp() | timestamp_custom('%Y%m%d%H%M%S')) -%}
+          {% set week = as_timestamp((now().date() + timedelta(days=6)) ~ ' 00:00:00') | timestamp_custom('%Y%m%d') -%}
+          {% set events = namespace(data=[]) -%}
+          {% for i in range(0, 5) -%}
+            {% set sensor_id = 'sensor.ical_family_event_' + i|string -%}
+            {% if is_state(sensor_id,'unavailable') -%}
+            {% else -%}
+              {% set event_start_date = as_timestamp(state_attr(sensor_id, "start"))|timestamp_custom('%Y%m%d') -%}
+              {% set event_end_ts = as_timestamp(state_attr(sensor_id, "end"))|timestamp_custom('%Y%m%d%H%M%S') -%}
+              {% if event_start_date >= today and event_start_date <= week and event_end_ts >= timenow -%}
+                {% if event_start_date == today %} {% set event_dow = "Today" -%}
+                {% else %} {% set event_dow = as_timestamp(state_attr(sensor_id, "start"))|timestamp_custom('%a') %} {% endif -%}
+                {% set events.data = events.data + [event_dow +" "+ (as_timestamp(state_attr(sensor_id, "start")) | timestamp_custom('%-I:%M %p')) +"|"+ state_attr(sensor_id, "summary")] -%}
+              {% endif -%}
+            {% endif -%}
+          {% endfor -%}
+          {{ events.data|join('\n') }}
+
+    - name: Alarm Group
+      state: >
+        {{ states('binary_sensor.alarms') }}
+      attributes:
+
+        alerts: >
+          {% set alerts = namespace(data=[]) -%}
+          {% for alarm in expand('binary_sensor.alarms')|map(attribute='entity_id') -%}
+            {% if states(alarm).lower() == "on" -%}
+              {% set name = state_attr(alarm, "friendly_name") or alarm -%}
+              {% set alerts.data = alerts.data + [name] -%}
+            {% endif -%}
+          {% endfor -%}
+          {{ alerts.data|join('\n') }}
+
+    - name: Entity Groups
+      state: "OK"
+      attributes:
+
+        doors_group: >
+          {% if states('binary_sensor.doors').lower() == 'on' %} True {% else %} False {% endif %}
+
+        lights_group: >
+          {% if states('light.lights').lower() == 'on' %} True {% else %} False {% endif %}
+
+        windows_group: >
+          {% if states('binary_sensor.windows').lower() == 'on' %} True {% else %} False {% endif %}
+
+    - name: Weather Data
+      state: "OK"
+      attributes:
+
+        weather_precipitation: >
+          {% set chance_precip = states('sensor.kentville_chance_of_precipitation') %}
+          {% if chance_precip == 'unknown' %} 0 {% else %} {{ chance_precip }} {% endif %}
+
+        weather_wind_direction: >
+          {% set empty_str = "" %}
+          {% set wind_dir = states('sensor.kentville_wind_direction') %}
+          {% if wind_dir == 'unknown' %} {{ empty_str }} {% else %} {{ wind_dir }} {% endif %}
+
+        weather_condition_now: >
+          {% set cond_now = states('weather.kentville_hourly') %}
+          {% if states('sun.sun') == 'below_horizon' %}
+              {% if cond_now == 'sunny' %} night {% elif cond_now == 'partlycloudy' %} night-partly-cloudy {% else %} {{ cond_now }} {% endif %}
+          {% else %}
+              {{ cond_now }}
+          {% endif %}
+
+        weather_condition_0: >
+          {% set cond0 = state_attr('weather.kentville_hourly', 'forecast')[5].condition %}
+          {% set next_setting = as_timestamp(state_attr('sun.sun', 'next_setting')) %}
+          {% set next_rising = as_timestamp(state_attr('sun.sun', 'next_rising')) %}
+          {% set cond0_time = as_timestamp(state_attr('weather.kentville_hourly', 'forecast')[5].datetime) %}
+          {% if cond0_time > next_setting and cond0_time < next_rising %}
+              {% if cond0 == 'sunny' %} night {% elif cond0 == 'partlycloudy' %} night-partly-cloudy {% else %} {{ cond0 }} {% endif %}
+          {% else %}
+              {{ cond0 }}
+          {% endif %}
+        weather_temperature_0: >
+          {{ state_attr('weather.kentville_hourly', 'forecast')[5].temperature | round }}
+        weather_timeofday_0: >
+          {% set forecast_time = (as_timestamp(state_attr('weather.kentville_hourly', 'forecast')[5].datetime) | timestamp_custom('%H') | int) %}
+          {% if forecast_time >= 0 and forecast_time <= 5 %} Overnight
+          {% elif forecast_time >= 6 and forecast_time <= 11 %} Morning
+          {% elif forecast_time >= 12 and forecast_time <= 17 %} Afternoon
+          {% elif forecast_time >= 18 and forecast_time <= 23 %} Evening
+          {% endif %}
+
+        weather_condition_1: >
+          {% set cond1 = state_attr('weather.kentville_hourly', 'forecast')[11].condition %}
+          {% set next_setting = as_timestamp(state_attr('sun.sun', 'next_setting')) %}
+          {% set next_rising = as_timestamp(state_attr('sun.sun', 'next_rising')) %}
+          {% set cond1_time = as_timestamp(state_attr('weather.kentville_hourly', 'forecast')[11].datetime) %}
+          {% if cond1_time > next_setting and cond1_time < next_rising %}
+              {% if cond1 == 'sunny' %} night {% elif cond1 == 'partlycloudy' %} night-partly-cloudy {% else %} {{ cond1 }} {% endif %}
+          {% else %}
+              {{ cond1 }}
+          {% endif %}
+        weather_temperature_1: >
+          {{ state_attr('weather.kentville_hourly', 'forecast')[11].temperature | round }}
+        weather_timeofday_1: >
+          {% set forecast_time = (as_timestamp(state_attr('weather.kentville_hourly', 'forecast')[11].datetime) | timestamp_custom('%H') | int) %}
+          {% if forecast_time >= 0 and forecast_time <= 5 %} Overnight
+          {% elif forecast_time >= 6 and forecast_time <= 11 %} Morning
+          {% elif forecast_time >= 12 and forecast_time <= 17 %} Afternoon
+          {% elif forecast_time >= 18 and forecast_time <= 23 %} Evening
+          {% endif %}
+
+        weather_condition_2: >
+          {% set cond2 = state_attr('weather.kentville_hourly', 'forecast')[17].condition %}
+          {% set next_setting = as_timestamp(state_attr('sun.sun', 'next_setting')) %}
+          {% set next_rising = as_timestamp(state_attr('sun.sun', 'next_rising')) %}
+          {% set cond2_time = as_timestamp(state_attr('weather.kentville_hourly', 'forecast')[17].datetime) %}
+          {% if cond2_time > next_setting and cond2_time < next_rising %}
+              {% if cond2 == 'sunny' %} night {% elif cond2 == 'partlycloudy' %} night-partly-cloudy {% else %} {{ cond2 }} {% endif %}
+          {% else %}
+              {{ cond2 }}
+          {% endif %}
+        weather_temperature_2: >
+          {{ state_attr('weather.kentville_hourly', 'forecast')[17].temperature | round }}
+        weather_timeofday_2: >
+          {% set forecast_time = (as_timestamp(state_attr('weather.kentville_hourly', 'forecast')[17].datetime) | timestamp_custom('%H') | int) %}
+          {% if forecast_time >= 0 and forecast_time <= 5 %} Overnight
+          {% elif forecast_time >= 6 and forecast_time <= 11 %} Morning
+          {% elif forecast_time >= 12 and forecast_time <= 17 %} Afternoon
+          {% elif forecast_time >= 18 and forecast_time <= 23 %} Evening
+          {% endif %}
+
+        weather_condition_3: >
+          {% set cond3 = state_attr('weather.kentville_hourly', 'forecast')[23].condition %}
+          {% set next_setting = as_timestamp(state_attr('sun.sun', 'next_setting')) %}
+          {% set next_rising = as_timestamp(state_attr('sun.sun', 'next_rising')) %}
+          {% set cond3_time = as_timestamp(state_attr('weather.kentville_hourly', 'forecast')[23].datetime) %}
+          {% if cond3_time > next_setting and cond3_time < next_rising %}
+              {% if cond3 == 'sunny' %} night {% elif cond3 == 'partlycloudy' %} night-partly-cloudy {% else %} {{ cond3 }} {% endif %}
+          {% else %}
+              {{ cond3 }}
+          {% endif %}
+        weather_temperature_3: >
+          {{ state_attr('weather.kentville_hourly', 'forecast')[23].temperature | round }}
+        weather_timeofday_3: >
+          {% set forecast_time = (as_timestamp(state_attr('weather.kentville_hourly', 'forecast')[23].datetime) | timestamp_custom('%H') | int) %}
+          {% if forecast_time >= 0 and forecast_time <= 5 %} Overnight
+          {% elif forecast_time >= 6 and forecast_time <= 11 %} Morning
+          {% elif forecast_time >= 12 and forecast_time <= 17 %} Afternoon
+          {% elif forecast_time >= 18 and forecast_time <= 23 %} Evening
+          {% endif %}
